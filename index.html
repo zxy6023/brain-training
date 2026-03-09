@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>舒尔特表训练</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell plain-off" data-mode="color">
+    <section class="hero-panel">
+      <p class="eyebrow">Brain Boost</p>
+      <h1>舒尔特表训练</h1>
+      <p class="hero-copy">点击开始后，按顺序找出 1 到 25。支持彩色模式和纯色模式，适合专注力与视野训练。</p>
+
+      <section class="user-panel">
+        <div class="auth-columns">
+          <form id="registerForm" class="auth-card">
+            <h2>注册用户</h2>
+            <input id="registerUsername" class="auth-input" type="text" placeholder="用户名" autocomplete="username">
+            <input id="registerPassword" class="auth-input" type="password" placeholder="密码" autocomplete="new-password">
+            <button class="action-button primary" type="submit">注册</button>
+          </form>
+
+          <form id="loginForm" class="auth-card">
+            <h2>登录用户</h2>
+            <input id="loginUsername" class="auth-input" type="text" placeholder="用户名" autocomplete="username">
+            <input id="loginPassword" class="auth-input" type="password" placeholder="密码" autocomplete="current-password">
+            <button class="action-button secondary" type="submit">登录</button>
+          </form>
+        </div>
+
+        <div class="session-card">
+          <p class="record-label">当前用户</p>
+          <strong id="currentUserValue">未登录</strong>
+          <p id="authMessage" class="auth-message">请先注册或登录，再开始训练。</p>
+          <button id="logoutButton" class="record-clear-button" type="button">退出登录</button>
+        </div>
+      </section>
+    </section>
+
+    <section class="game-panel">
+      <div class="control-bar">
+        <button id="startButton" class="action-button primary" type="button">开始训练</button>
+        <button id="resetButton" class="action-button secondary" type="button">重新生成</button>
+        <label class="mode-toggle" for="colorToggle">
+          <input id="colorToggle" type="checkbox" checked>
+          <span>彩色模式</span>
+        </label>
+      </div>
+
+      <div class="status-board">
+        <article class="status-card">
+          <span class="status-label">当前目标</span>
+          <strong id="targetValue">1</strong>
+        </article>
+        <article class="status-card">
+          <span class="status-label">当前用时</span>
+          <strong id="timerValue">00.00s</strong>
+        </article>
+      </div>
+
+      <p id="message" class="message" aria-live="polite">点击“开始训练”开始一局新的舒尔特表挑战。</p>
+
+      <section id="grid" class="schulte-grid idle" aria-label="舒尔特表训练网格"></section>
+
+      <section id="resultPanel" class="result-panel hidden" aria-live="polite">
+        <h2>完成挑战</h2>
+        <p id="resultText">你已经完成本轮训练。</p>
+      </section>
+
+      <section class="record-panel" aria-live="polite">
+        <div class="record-panel-head">
+          <h2>训练记录</h2>
+          <button id="clearRecordsButton" class="record-clear-button" type="button">清空记录</button>
+        </div>
+
+        <article class="best-record-card">
+          <span class="record-label">最佳成绩</span>
+          <strong id="bestRecordValue">暂无</strong>
+        </article>
+
+        <div class="recent-records">
+          <p class="record-label">最近 5 次</p>
+          <p id="recordsEmpty" class="records-empty">还没有历史成绩，开始训练吧。</p>
+          <ul id="recordsList" class="records-list"></ul>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
