@@ -25,6 +25,7 @@ const {
 } = require('./script.js');
 
 const styleCss = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
+const scriptSource = fs.readFileSync(path.join(__dirname, 'script.js'), 'utf8');
 
 test('BMOB_BASE_URL points to the reachable Bmobcloud API host', () => {
   assert.equal(BMOB_BASE_URL, 'https://api.bmobcloud.com/1');
@@ -325,4 +326,11 @@ test('parseShareParams reads valid share data from url', () => {
 
 test('parseShareParams ignores incomplete share payloads', () => {
   assert.equal(parseShareParams('https://zxy6023.github.io/brain-training/?share=1&user=alice'), null);
+});
+
+test('refreshScoreSummary also refreshes share button state', () => {
+  const start = scriptSource.indexOf('async function refreshScoreSummary()');
+  const end = scriptSource.indexOf('async function refreshLeaderboard()', start);
+  const section = scriptSource.slice(start, end);
+  assert.ok(section.includes('updateShareUI('));
 });

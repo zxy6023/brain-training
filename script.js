@@ -749,6 +749,7 @@
     if (!currentSession || !bmobApi) {
       currentSummary = emptySummary();
       renderRecords();
+      updateShareUI();
       return;
     }
 
@@ -756,9 +757,11 @@
       const records = await bmobApi.fetchScores(currentSession);
       currentSummary = summarizeScoreRecords(records);
       renderRecords();
+      updateShareUI();
     } catch (error) {
       currentSummary = emptySummary();
       renderRecords();
+      updateShareUI();
       if (recordsEmpty) {
         recordsEmpty.classList.remove('hidden');
         recordsEmpty.textContent = extractErrorMessage(error, '云端成绩加载失败');
