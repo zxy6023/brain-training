@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
   BMOB_BASE_URL,
@@ -18,6 +20,8 @@ const {
   createBestScorePayload,
   isMissingClassError,
 } = require('./script.js');
+
+const styleCss = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
 
 test('BMOB_BASE_URL points to the reachable Bmobcloud API host', () => {
   assert.equal(BMOB_BASE_URL, 'https://api.bmobcloud.com/1');
@@ -265,4 +269,14 @@ test('summarizeLeaderboardRows sorts ascending and keeps top twenty', () => {
 test('isMissingClassError matches missing UserBestScore class responses', () => {
   assert.equal(isMissingClassError(new Error('object not found for UserBestScore.'), 'UserBestScore'), true);
   assert.equal(isMissingClassError(new Error('other message'), 'UserBestScore'), false);
+});
+
+test('style.css includes dedicated 720px and 430px mobile breakpoints', () => {
+  assert.match(styleCss, /@media \(max-width: 720px\)/);
+  assert.match(styleCss, /@media \(max-width: 430px\)/);
+});
+
+test('style.css includes compact mobile leaderboard and safe-area spacing rules', () => {
+  assert.match(styleCss, /padding: 12px 10px calc\(18px \+ env\(safe-area-inset-bottom\)\);/);
+  assert.match(styleCss, /grid-template-columns: 44px minmax\(0, 1fr\);/);
 });
