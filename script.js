@@ -1,8 +1,9 @@
 (function () {
-  const BMOB_BASE_URL = 'https://api2.bmob.cn/1';
+  const BMOB_BASE_URL = 'https://api.bmobcloud.com/1';
   const BMOB_APP_ID = 'faa5d29a689c833d79ee22ec347436df';
   const BMOB_API_KEY = '5191e34202c12298cb09cfc916becb03';
   const SCORE_CLASS_NAME = 'ScoreRecord';
+  const USER_BEST_SCORE_CLASS_NAME = 'UserBestScore';
   const SESSION_STORAGE_KEY = 'schulte-trainer-bmob-session';
 
   const root = typeof document !== 'undefined' ? document.querySelector('.app-shell') : null;
@@ -19,6 +20,8 @@
   const bestRecordValue = typeof document !== 'undefined' ? document.getElementById('bestRecordValue') : null;
   const recordsEmpty = typeof document !== 'undefined' ? document.getElementById('recordsEmpty') : null;
   const recordsList = typeof document !== 'undefined' ? document.getElementById('recordsList') : null;
+  const leaderboardEmpty = typeof document !== 'undefined' ? document.getElementById('leaderboardEmpty') : null;
+  const leaderboardList = typeof document !== 'undefined' ? document.getElementById('leaderboardList') : null;
   const registerForm = typeof document !== 'undefined' ? document.getElementById('registerForm') : null;
   const loginForm = typeof document !== 'undefined' ? document.getElementById('loginForm') : null;
   const registerUsername = typeof document !== 'undefined' ? document.getElementById('registerUsername') : null;
@@ -34,6 +37,8 @@
   let currentState = createIdleState(shuffleArray(createSequence(25)));
   let currentSession = readSession();
   let currentSummary = emptySummary();
+  let currentLeaderboard = [];
+  let leaderboardMessage = '还没有排行榜数据。';
   const bmobApi = typeof fetch === 'function' ? createBmobApi(fetch.bind(typeof window !== 'undefined' ? window : globalThis)) : null;
 
   function createSequence(limit) {
@@ -141,13 +146,18 @@
     return fallback;
   }
 
-  function normalizeSession(user) {
+  function isMissingClassError(error, className) {
+    const message = extractErrorMessage(error, '');
+    return message.includes(`object not found for ${className}`);
+  }
+
+  function normalizeSession(user, fallbackUsername) {
     if (!user || typeof user !== 'object') {
       return null;
     }
 
     const objectId = String(user.objectId || '');
-    const username = String(user.username || '');
+    const username = String(user.username || fallbackUsername || '');
     const sessionToken = String(user.sessionToken || '');
 
     if (!objectId || !username || !sessionToken) {
@@ -214,6 +224,17 @@
     };
   }
 
+  function normalizeBestScoreRecord(record) {
+    return {
+      objectId: String(record.objectId || ''),
+      userObjectId: String(record.userObjectId || ''),
+      username: String(record.username || ''),
+      bestElapsedMs: Number(record.bestElapsedMs || 0),
+      bestCompletedAt: String(record.bestCompletedAt || ''),
+      colorMode: String(record.colorMode || 'color'),
+    };
+  }
+
   function emptySummary() {
     return { best: null, recent: [] };
   }
@@ -238,12 +259,34 @@
     return { best, recent };
   }
 
+  function summarizeLeaderboardRows(rows) {
+    const safeRows = Array.isArray(rows)
+      ? rows
+          .map(normalizeBestScoreRecord)
+          .filter((item) => item.objectId && item.username && Number.isFinite(item.bestElapsedMs) && item.bestElapsedMs > 0)
+      : [];
+
+    return safeRows
+      .sort((left, right) => left.bestElapsedMs - right.bestElapsedMs || String(left.bestCompletedAt).localeCompare(String(right.bestCompletedAt)))
+      .slice(0, 20);
+  }
+
   function createScorePayload(user, elapsedMs, completedAt, colorEnabled) {
     return {
       userObjectId: user.objectId,
       username: user.username,
       elapsedMs,
       completedAt,
+      colorMode: colorEnabled ? 'color' : 'plain',
+    };
+  }
+
+  function createBestScorePayload(user, elapsedMs, completedAt, colorEnabled) {
+    return {
+      userObjectId: user.objectId,
+      username: user.username,
+      bestElapsedMs: elapsedMs,
+      bestCompletedAt: completedAt,
       colorMode: colorEnabled ? 'color' : 'plain',
     };
   }
@@ -300,6 +343,37 @@
         );
         return Array.isArray(payload.results) ? payload.results.map(normalizeScoreRecord) : [];
       },
+      async fetchUserBestScore(session) {
+        const where = encodeURIComponent(JSON.stringify({ userObjectId: session.objectId }));
+        try {
+          const payload = await request(
+            `/classes/${USER_BEST_SCORE_CLASS_NAME}?where=${where}&limit=1`,
+            { method: 'GET' },
+            session.sessionToken,
+          );
+          const rows = Array.isArray(payload.results) ? payload.results.map(normalizeBestScoreRecord) : [];
+          return rows[0] || null;
+        } catch (error) {
+          if (isMissingClassError(error, USER_BEST_SCORE_CLASS_NAME)) {
+            return null;
+          }
+          throw error;
+        }
+      },
+      async fetchLeaderboard() {
+        try {
+          const payload = await request(
+            `/classes/${USER_BEST_SCORE_CLASS_NAME}?order=bestElapsedMs&limit=20`,
+            { method: 'GET' },
+          );
+          return Array.isArray(payload.results) ? payload.results.map(normalizeBestScoreRecord) : [];
+        } catch (error) {
+          if (isMissingClassError(error, USER_BEST_SCORE_CLASS_NAME)) {
+            return [];
+          }
+          throw error;
+        }
+      },
       async createScore(session, scorePayload) {
         return request(
           `/classes/${SCORE_CLASS_NAME}`,
@@ -317,6 +391,33 @@
           session.sessionToken,
         );
       },
+      async createBestScore(session, bestScorePayload) {
+        return request(
+          `/classes/${USER_BEST_SCORE_CLASS_NAME}`,
+          {
+            method: 'POST',
+            body: JSON.stringify(bestScorePayload),
+          },
+          session.sessionToken,
+        );
+      },
+      async updateBestScore(session, objectId, bestScorePayload) {
+        return request(
+          `/classes/${USER_BEST_SCORE_CLASS_NAME}/${objectId}`,
+          {
+            method: 'PUT',
+            body: JSON.stringify(bestScorePayload),
+          },
+          session.sessionToken,
+        );
+      },
+      async deleteBestScore(session, objectId) {
+        return request(
+          `/classes/${USER_BEST_SCORE_CLASS_NAME}/${objectId}`,
+          { method: 'DELETE' },
+          session.sessionToken,
+        );
+      },
     };
   }
 
@@ -327,7 +428,10 @@
     }
 
     try {
-      const user = normalizeSession(await api.registerUser(validation.username, validation.password));
+      const user = normalizeSession(
+        await api.registerUser(validation.username, validation.password),
+        validation.username,
+      );
       if (!user) {
         return { ok: false, message: '注册返回的数据无效' };
       }
@@ -442,6 +546,54 @@
     });
   }
 
+  function renderLeaderboard() {
+    if (!leaderboardEmpty || !leaderboardList) {
+      return;
+    }
+
+    leaderboardList.innerHTML = '';
+
+    if (!currentLeaderboard.length) {
+      leaderboardEmpty.classList.remove('hidden');
+      leaderboardEmpty.textContent = leaderboardMessage;
+      return;
+    }
+
+    leaderboardEmpty.classList.add('hidden');
+    currentLeaderboard.forEach((item, index) => {
+      const row = document.createElement('li');
+      const rank = document.createElement('span');
+      const main = document.createElement('div');
+      const user = document.createElement('span');
+      const meta = document.createElement('span');
+      const score = document.createElement('span');
+
+      row.className = 'leaderboard-row';
+      if (currentSession && item.userObjectId === currentSession.objectId) {
+        row.classList.add('current-user');
+      }
+
+      rank.className = 'leaderboard-rank';
+      rank.textContent = String(index + 1);
+
+      main.className = 'leaderboard-main';
+      user.className = 'leaderboard-user';
+      user.textContent = item.username;
+      meta.className = 'leaderboard-meta';
+      meta.textContent = item.bestCompletedAt;
+      main.appendChild(user);
+      main.appendChild(meta);
+
+      score.className = 'leaderboard-score';
+      score.textContent = formatElapsedTime(item.bestElapsedMs);
+
+      row.appendChild(rank);
+      row.appendChild(main);
+      row.appendChild(score);
+      leaderboardList.appendChild(row);
+    });
+  }
+
   function syncColorMode(enabled) {
     if (!root) {
       return;
@@ -473,6 +625,7 @@
     }
 
     renderRecords();
+    renderLeaderboard();
     updateStatus();
   }
 
@@ -497,6 +650,43 @@
     }
   }
 
+  async function refreshLeaderboard() {
+    if (!bmobApi) {
+      currentLeaderboard = [];
+      leaderboardMessage = '当前环境不支持排行榜请求。';
+      renderLeaderboard();
+      return;
+    }
+
+    try {
+      currentLeaderboard = summarizeLeaderboardRows(await bmobApi.fetchLeaderboard());
+      leaderboardMessage = '还没有排行榜数据。';
+      renderLeaderboard();
+    } catch (error) {
+      currentLeaderboard = [];
+      leaderboardMessage = extractErrorMessage(error, '排行榜加载失败');
+      renderLeaderboard();
+    }
+  }
+
+  async function upsertBestScore(elapsedMs, completedAt, colorEnabled) {
+    if (!currentSession || !bmobApi) {
+      return;
+    }
+
+    const payload = createBestScorePayload(currentSession, elapsedMs, completedAt, colorEnabled);
+    const existing = await bmobApi.fetchUserBestScore(currentSession);
+
+    if (!existing) {
+      await bmobApi.createBestScore(currentSession, payload);
+      return;
+    }
+
+    if (elapsedMs < existing.bestElapsedMs) {
+      await bmobApi.updateBestScore(currentSession, existing.objectId, payload);
+    }
+  }
+
   async function clearRemoteRecords() {
     if (!currentSession || !bmobApi) {
       return;
@@ -504,6 +694,11 @@
 
     const records = await bmobApi.fetchScores(currentSession);
     await Promise.all(records.map((item) => bmobApi.deleteScore(currentSession, item.objectId)));
+
+    const bestScore = await bmobApi.fetchUserBestScore(currentSession);
+    if (bestScore) {
+      await bmobApi.deleteBestScore(currentSession, bestScore.objectId);
+    }
   }
 
   function startTimer() {
@@ -584,11 +779,14 @@
     }
 
     try {
+      const colorEnabled = Boolean(colorToggle && colorToggle.checked);
       await bmobApi.createScore(
         currentSession,
-        createScorePayload(currentSession, elapsedMs, completedAt, Boolean(colorToggle && colorToggle.checked)),
+        createScorePayload(currentSession, elapsedMs, completedAt, colorEnabled),
       );
+      await upsertBestScore(elapsedMs, completedAt, colorEnabled);
       await refreshScoreSummary();
+      await refreshLeaderboard();
     } catch (error) {
       if (resultText) {
         resultText.textContent = `本轮完成用时 ${elapsed}，但云端保存失败：${extractErrorMessage(error, '请稍后重试')}`;
@@ -653,6 +851,7 @@
 
     updateAuthUI('注册并登录成功');
     await refreshScoreSummary();
+    await refreshLeaderboard();
   }
 
   async function handleLoginSubmit(event) {
@@ -682,6 +881,7 @@
 
     updateAuthUI('登录成功');
     await refreshScoreSummary();
+    await refreshLeaderboard();
   }
 
   function handleLogoutClick() {
@@ -689,6 +889,7 @@
     currentSummary = emptySummary();
     clearSession();
     updateAuthUI('已退出登录');
+    void refreshLeaderboard();
   }
 
   async function handleClearRecordsClick() {
@@ -700,6 +901,7 @@
       await clearRemoteRecords();
       currentSummary = emptySummary();
       renderRecords();
+      await refreshLeaderboard();
       updateAuthUI('已清空当前用户的云端成绩');
     } catch (error) {
       updateAuthUI(extractErrorMessage(error, '清空成绩失败'));
@@ -753,6 +955,7 @@
     }
 
     void refreshScoreSummary();
+    void refreshLeaderboard();
   }
 
   if (typeof document !== 'undefined') {
@@ -761,6 +964,7 @@
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
+      BMOB_BASE_URL,
       createSequence,
       shuffleArray,
       formatElapsedTime,
@@ -773,6 +977,9 @@
       loginUser,
       summarizeScoreRecords,
       createScorePayload,
+      summarizeLeaderboardRows,
+      createBestScorePayload,
+      isMissingClassError,
     };
   }
 }());

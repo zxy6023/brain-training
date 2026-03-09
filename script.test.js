@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  BMOB_BASE_URL,
   createSequence,
   formatElapsedTime,
   createGameState,
@@ -13,7 +14,14 @@ const {
   loginUser,
   summarizeScoreRecords,
   createScorePayload,
+  summarizeLeaderboardRows,
+  createBestScorePayload,
+  isMissingClassError,
 } = require('./script.js');
+
+test('BMOB_BASE_URL points to the reachable Bmobcloud API host', () => {
+  assert.equal(BMOB_BASE_URL, 'https://api.bmobcloud.com/1');
+});
 
 test('createSequence returns ascending numbers from 1 to 25', () => {
   assert.deepEqual(createSequence(25), [
@@ -133,6 +141,22 @@ test('registerUser calls the provided api adapter', async () => {
   assert.equal(result.user.sessionToken, 'token-1');
 });
 
+test('registerUser fills username when Bmob register response omits it', async () => {
+  const api = {
+    registerUser: async () => ({
+      objectId: 'u1',
+      createdAt: '2026-03-09 14:35:40',
+      sessionToken: 'token-2',
+    }),
+  };
+
+  const result = await registerUser(api, 'alice', '123456');
+
+  assert.equal(result.ok, true);
+  assert.equal(result.user.username, 'alice');
+  assert.equal(result.user.sessionToken, 'token-2');
+});
+
 test('registerUser surfaces adapter errors', async () => {
   const api = {
     registerUser: async () => {
@@ -202,4 +226,43 @@ test('createScorePayload stores the active user and round result', () => {
     completedAt: '2026-03-09 11:00',
     colorMode: 'color',
   });
+});
+
+test('createBestScorePayload stores one best score row per user', () => {
+  const payload = createBestScorePayload(
+    { objectId: 'u1', username: 'alice' },
+    980,
+    '2026-03-09 12:00:00',
+    false,
+  );
+
+  assert.deepEqual(payload, {
+    userObjectId: 'u1',
+    username: 'alice',
+    bestElapsedMs: 980,
+    bestCompletedAt: '2026-03-09 12:00:00',
+    colorMode: 'plain',
+  });
+});
+
+test('summarizeLeaderboardRows sorts ascending and keeps top twenty', () => {
+  const rows = Array.from({ length: 22 }, (_, index) => ({
+    objectId: `row-${index + 1}`,
+    username: `user-${index + 1}`,
+    bestElapsedMs: 3000 - index * 50,
+    bestCompletedAt: `2026-03-09 12:${String(index).padStart(2, '0')}:00`,
+    colorMode: 'color',
+    userObjectId: `u-${index + 1}`,
+  }));
+
+  const result = summarizeLeaderboardRows(rows);
+
+  assert.equal(result.length, 20);
+  assert.equal(result[0].bestElapsedMs, 1950);
+  assert.equal(result[19].bestElapsedMs, 2900);
+});
+
+test('isMissingClassError matches missing UserBestScore class responses', () => {
+  assert.equal(isMissingClassError(new Error('object not found for UserBestScore.'), 'UserBestScore'), true);
+  assert.equal(isMissingClassError(new Error('other message'), 'UserBestScore'), false);
 });
