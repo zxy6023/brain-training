@@ -19,6 +19,9 @@ const {
   summarizeLeaderboardRows,
   createBestScorePayload,
   isMissingClassError,
+  buildShareUrl,
+  buildShareText,
+  parseShareParams,
 } = require('./script.js');
 
 const styleCss = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
@@ -279,4 +282,47 @@ test('style.css includes dedicated 720px and 430px mobile breakpoints', () => {
 test('style.css includes compact mobile leaderboard and safe-area spacing rules', () => {
   assert.match(styleCss, /padding: 12px 10px calc\(18px \+ env\(safe-area-inset-bottom\)\);/);
   assert.match(styleCss, /grid-template-columns: 44px minmax\(0, 1fr\);/);
+});
+
+test('buildShareUrl creates a score-bearing link', () => {
+  const url = buildShareUrl('https://zxy6023.github.io/brain-training/', {
+    username: 'alice',
+    bestTime: '12.34s',
+    completedAt: '2026-03-09 16:00:00',
+    mode: 'color',
+  });
+
+  assert.match(url, /share=1/);
+  assert.match(url, /user=alice/);
+  assert.match(url, /best=12.34s/);
+});
+
+test('buildShareText produces readable share copy', () => {
+  const text = buildShareText({
+    username: 'alice',
+    bestTime: '12.34s',
+    completedAt: '2026-03-09 16:00:00',
+    mode: 'color',
+    url: 'https://zxy6023.github.io/brain-training/?share=1',
+  });
+
+  assert.match(text, /alice/);
+  assert.match(text, /12.34s/);
+  assert.match(text, /彩色模式/);
+  assert.match(text, /https:\/\/zxy6023.github.io\/brain-training\/\?share=1/);
+});
+
+test('parseShareParams reads valid share data from url', () => {
+  const payload = parseShareParams('https://zxy6023.github.io/brain-training/?share=1&user=alice&best=12.34s&doneAt=2026-03-09%2016%3A00%3A00&mode=color');
+
+  assert.deepEqual(payload, {
+    username: 'alice',
+    bestTime: '12.34s',
+    completedAt: '2026-03-09 16:00:00',
+    mode: 'color',
+  });
+});
+
+test('parseShareParams ignores incomplete share payloads', () => {
+  assert.equal(parseShareParams('https://zxy6023.github.io/brain-training/?share=1&user=alice'), null);
 });

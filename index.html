@@ -69,6 +69,12 @@
         <p id="resultText">你已经完成本轮训练。</p>
       </section>
 
+      <section id="sharePreviewCard" class="share-preview-card hidden" aria-live="polite">
+        <p class="eyebrow share-kicker">Best Score Share</p>
+        <h2>分享成绩</h2>
+        <p id="sharePreviewText" class="share-preview-text"></p>
+      </section>
+
       <section class="record-panel" aria-live="polite">
         <div class="record-panel-head">
           <h2>训练记录</h2>
@@ -78,6 +84,11 @@
         <article class="best-record-card">
           <span class="record-label">最佳成绩</span>
           <strong id="bestRecordValue">暂无</strong>
+          <div class="share-actions">
+            <button id="copyShareTextButton" class="share-action-button" type="button">复制分享文本</button>
+            <button id="copyShareLinkButton" class="share-action-button" type="button">复制分享链接</button>
+          </div>
+          <p id="shareMessage" class="share-message">先完成一局训练，再分享你的最佳成绩。</p>
         </article>
 
         <div class="recent-records">

@@ -20,6 +20,11 @@
   const bestRecordValue = typeof document !== 'undefined' ? document.getElementById('bestRecordValue') : null;
   const recordsEmpty = typeof document !== 'undefined' ? document.getElementById('recordsEmpty') : null;
   const recordsList = typeof document !== 'undefined' ? document.getElementById('recordsList') : null;
+  const copyShareTextButton = typeof document !== 'undefined' ? document.getElementById('copyShareTextButton') : null;
+  const copyShareLinkButton = typeof document !== 'undefined' ? document.getElementById('copyShareLinkButton') : null;
+  const shareMessage = typeof document !== 'undefined' ? document.getElementById('shareMessage') : null;
+  const sharePreviewCard = typeof document !== 'undefined' ? document.getElementById('sharePreviewCard') : null;
+  const sharePreviewText = typeof document !== 'undefined' ? document.getElementById('sharePreviewText') : null;
   const leaderboardEmpty = typeof document !== 'undefined' ? document.getElementById('leaderboardEmpty') : null;
   const leaderboardList = typeof document !== 'undefined' ? document.getElementById('leaderboardList') : null;
   const registerForm = typeof document !== 'undefined' ? document.getElementById('registerForm') : null;
@@ -39,6 +44,7 @@
   let currentSummary = emptySummary();
   let currentLeaderboard = [];
   let leaderboardMessage = '还没有排行榜数据。';
+  let currentSharePayload = parseShareParams(typeof window !== 'undefined' ? window.location.href : '');
   const bmobApi = typeof fetch === 'function' ? createBmobApi(fetch.bind(typeof window !== 'undefined' ? window : globalThis)) : null;
 
   function createSequence(limit) {
@@ -288,6 +294,58 @@
       bestElapsedMs: elapsedMs,
       bestCompletedAt: completedAt,
       colorMode: colorEnabled ? 'color' : 'plain',
+    };
+  }
+
+  function buildShareUrl(baseUrl, payload) {
+    const url = new URL(baseUrl);
+    url.searchParams.set('share', '1');
+    url.searchParams.set('user', payload.username);
+    url.searchParams.set('best', payload.bestTime);
+    url.searchParams.set('doneAt', payload.completedAt);
+    url.searchParams.set('mode', payload.mode);
+    return url.toString();
+  }
+
+  function buildShareText(payload) {
+    const modeLabel = payload.mode === 'color' ? '彩色模式' : '纯色模式';
+    return `${payload.username} 在舒尔特表训练中刷新了最佳成绩：${payload.bestTime}\n完成时间：${payload.completedAt}\n训练模式：${modeLabel}\n来挑战一下：${payload.url}`;
+  }
+
+  function parseShareParams(urlString) {
+    if (!urlString) {
+      return null;
+    }
+
+    let url;
+    try {
+      url = new URL(urlString);
+    } catch (error) {
+      return null;
+    }
+
+    if (url.searchParams.get('share') !== '1') {
+      return null;
+    }
+
+    const username = String(url.searchParams.get('user') || '').trim();
+    const bestTime = String(url.searchParams.get('best') || '').trim();
+    const completedAt = String(url.searchParams.get('doneAt') || '').trim();
+    const mode = String(url.searchParams.get('mode') || '').trim();
+
+    if (!username || !bestTime || !completedAt || !mode) {
+      return null;
+    }
+
+    if (mode !== 'color' && mode !== 'plain') {
+      return null;
+    }
+
+    return {
+      username,
+      bestTime,
+      completedAt,
+      mode,
     };
   }
 
@@ -594,6 +652,62 @@
     });
   }
 
+  function renderSharePreview() {
+    if (!sharePreviewCard || !sharePreviewText) {
+      return;
+    }
+
+    if (!currentSharePayload) {
+      sharePreviewCard.classList.add('hidden');
+      sharePreviewText.textContent = '';
+      return;
+    }
+
+    const modeLabel = currentSharePayload.mode === 'color' ? '彩色模式' : '纯色模式';
+    sharePreviewCard.classList.remove('hidden');
+    sharePreviewText.textContent = `${currentSharePayload.username} 的最佳成绩是 ${currentSharePayload.bestTime}，完成于 ${currentSharePayload.completedAt}，训练模式为 ${modeLabel}。`;
+  }
+
+  function getBestSharePayload() {
+    if (!currentSession || !currentSummary.best) {
+      return null;
+    }
+
+    const payload = {
+      username: currentSession.username,
+      bestTime: formatElapsedTime(currentSummary.best.elapsedMs),
+      completedAt: currentSummary.best.completedAt,
+      mode: currentSummary.best.colorMode || 'color',
+    };
+    payload.url = buildShareUrl(typeof window !== 'undefined' ? window.location.href : 'https://zxy6023.github.io/brain-training/', payload);
+    return payload;
+  }
+
+  async function copyText(text) {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+
+    throw new Error('当前浏览器不支持自动复制，请手动复制。');
+  }
+
+  function updateShareUI(message) {
+    const hasBest = Boolean(currentSession && currentSummary.best);
+
+    if (copyShareTextButton) {
+      copyShareTextButton.disabled = !hasBest;
+    }
+
+    if (copyShareLinkButton) {
+      copyShareLinkButton.disabled = !hasBest;
+    }
+
+    if (shareMessage) {
+      shareMessage.textContent = message || (hasBest ? '一键复制你的最佳成绩分享文本或分享链接。' : '先完成一局训练，再分享你的最佳成绩。');
+    }
+  }
+
   function syncColorMode(enabled) {
     if (!root) {
       return;
@@ -626,6 +740,8 @@
 
     renderRecords();
     renderLeaderboard();
+    renderSharePreview();
+    updateShareUI();
     updateStatus();
   }
 
@@ -908,6 +1024,36 @@
     }
   }
 
+  async function handleCopyShareText() {
+    const payload = getBestSharePayload();
+    if (!payload) {
+      updateShareUI('先完成一局训练，再分享你的最佳成绩。');
+      return;
+    }
+
+    try {
+      await copyText(buildShareText(payload));
+      updateShareUI('分享文本已复制。');
+    } catch (error) {
+      updateShareUI(extractErrorMessage(error, '复制分享文本失败'));
+    }
+  }
+
+  async function handleCopyShareLink() {
+    const payload = getBestSharePayload();
+    if (!payload) {
+      updateShareUI('先完成一局训练，再分享你的最佳成绩。');
+      return;
+    }
+
+    try {
+      await copyText(payload.url);
+      updateShareUI('分享链接已复制。');
+    } catch (error) {
+      updateShareUI(extractErrorMessage(error, '复制分享链接失败'));
+    }
+  }
+
   function initBrowserApp() {
     if (!root || !gridElement) {
       return;
@@ -954,8 +1100,21 @@
       });
     }
 
+    if (copyShareTextButton) {
+      copyShareTextButton.addEventListener('click', () => {
+        void handleCopyShareText();
+      });
+    }
+
+    if (copyShareLinkButton) {
+      copyShareLinkButton.addEventListener('click', () => {
+        void handleCopyShareLink();
+      });
+    }
+
     void refreshScoreSummary();
     void refreshLeaderboard();
+    renderSharePreview();
   }
 
   if (typeof document !== 'undefined') {
@@ -980,6 +1139,9 @@
       summarizeLeaderboardRows,
       createBestScorePayload,
       isMissingClassError,
+      buildShareUrl,
+      buildShareText,
+      parseShareParams,
     };
   }
 }());
