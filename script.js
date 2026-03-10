@@ -4,6 +4,8 @@
   const BMOB_API_KEY = '5191e34202c12298cb09cfc916becb03';
   const SCORE_CLASS_NAME = 'ScoreRecord';
   const USER_BEST_SCORE_CLASS_NAME = 'UserBestScore';
+  const NUMBER_MEMORY_RECORD_CLASS_NAME = 'NumberMemoryRecord';
+  const NUMBER_MEMORY_BEST_CLASS_NAME = 'NumberMemoryBest';
   const SESSION_STORAGE_KEY = 'schulte-trainer-bmob-session';
 
   const root = typeof document !== 'undefined' ? document.querySelector('.app-shell') : null;
@@ -36,15 +38,39 @@
   const currentUserValue = typeof document !== 'undefined' ? document.getElementById('currentUserValue') : null;
   const authMessage = typeof document !== 'undefined' ? document.getElementById('authMessage') : null;
   const logoutButton = typeof document !== 'undefined' ? document.getElementById('logoutButton') : null;
+  const schulteModeButton = typeof document !== 'undefined' ? document.getElementById('schulteModeButton') : null;
+  const numberMemoryModeButton = typeof document !== 'undefined' ? document.getElementById('numberMemoryModeButton') : null;
+  const schulteModePanel = typeof document !== 'undefined' ? document.getElementById('schulteModePanel') : null;
+  const numberMemoryModePanel = typeof document !== 'undefined' ? document.getElementById('numberMemoryModePanel') : null;
+  const memoryStartLengthInput = typeof document !== 'undefined' ? document.getElementById('memoryStartLengthInput') : null;
+  const memoryStartButton = typeof document !== 'undefined' ? document.getElementById('memoryStartButton') : null;
+  const memoryCurrentLengthValue = typeof document !== 'undefined' ? document.getElementById('memoryCurrentLengthValue') : null;
+  const memoryRunBestValue = typeof document !== 'undefined' ? document.getElementById('memoryRunBestValue') : null;
+  const memoryMessage = typeof document !== 'undefined' ? document.getElementById('memoryMessage') : null;
+  const memorySequenceDisplay = typeof document !== 'undefined' ? document.getElementById('memorySequenceDisplay') : null;
+  const memoryAnswerInput = typeof document !== 'undefined' ? document.getElementById('memoryAnswerInput') : null;
+  const memorySubmitButton = typeof document !== 'undefined' ? document.getElementById('memorySubmitButton') : null;
+  const clearMemoryRecordsButton = typeof document !== 'undefined' ? document.getElementById('clearMemoryRecordsButton') : null;
+  const memoryBestValue = typeof document !== 'undefined' ? document.getElementById('memoryBestValue') : null;
+  const memoryRecordsEmpty = typeof document !== 'undefined' ? document.getElementById('memoryRecordsEmpty') : null;
+  const memoryRecordsList = typeof document !== 'undefined' ? document.getElementById('memoryRecordsList') : null;
+  const memoryLeaderboardEmpty = typeof document !== 'undefined' ? document.getElementById('memoryLeaderboardEmpty') : null;
+  const memoryLeaderboardList = typeof document !== 'undefined' ? document.getElementById('memoryLeaderboardList') : null;
 
   let timerId = null;
   let roundStart = 0;
   let currentState = createIdleState(shuffleArray(createSequence(25)));
+  let activeMode = 'schulte';
   let currentSession = readSession();
   let currentSummary = emptySummary();
   let currentLeaderboard = [];
   let leaderboardMessage = '还没有排行榜数据。';
   let currentSharePayload = parseShareParams(typeof window !== 'undefined' ? window.location.href : '');
+  let numberMemoryState = createNumberMemoryState(3);
+  let memorySummary = emptyNumberMemorySummary();
+  let memoryLeaderboard = [];
+  let memoryLeaderboardMessage = '还没有数字记忆排行榜数据。';
+  let memoryHideTimer = null;
   const bmobApi = typeof fetch === 'function' ? createBmobApi(fetch.bind(typeof window !== 'undefined' ? window : globalThis)) : null;
 
   function createSequence(limit) {
@@ -297,6 +323,134 @@
     };
   }
 
+  function sanitizeNumberMemoryStartLength(value) {
+    const parsed = Number.parseInt(String(value || '').trim(), 10);
+    if (!Number.isFinite(parsed)) {
+      return 3;
+    }
+    return Math.max(2, Math.min(20, parsed));
+  }
+
+  function validateNumberMemoryStartLength(value) {
+    const parsed = Number.parseInt(String(value || '').trim(), 10);
+    if (!Number.isFinite(parsed)) {
+      return { ok: false, message: '请输入 2 到 20 之间的起始长度。' };
+    }
+    if (parsed < 2 || parsed > 20) {
+      return { ok: false, message: '起始长度需在 2 到 20 之间。' };
+    }
+    return { ok: true, value: parsed };
+  }
+
+  function getDefaultNumberMemoryStartLength(previousBestLength) {
+    if (!Number.isFinite(previousBestLength) || previousBestLength <= 0) {
+      return 3;
+    }
+    return sanitizeNumberMemoryStartLength(previousBestLength + 1);
+  }
+
+  function createNumberMemorySequence(length, randomSource) {
+    const nextRandom = randomSource || Math.random;
+    return Array.from({ length }, () => String(Math.floor(nextRandom() * 10))).join('');
+  }
+
+  function createNumberMemoryState(startLength) {
+    const safeLength = sanitizeNumberMemoryStartLength(startLength);
+    return {
+      status: 'idle',
+      startLength: safeLength,
+      currentLength: safeLength,
+      currentSequence: '',
+      longestSuccessLength: 0,
+      awaitingInput: false,
+    };
+  }
+
+  function emptyNumberMemorySummary() {
+    return { best: null, recent: [] };
+  }
+
+  function normalizeNumberMemoryRecord(record) {
+    return {
+      objectId: String(record.objectId || ''),
+      userObjectId: String(record.userObjectId || ''),
+      username: String(record.username || ''),
+      startLength: Number(record.startLength || 0),
+      bestSuccessLength: Number(record.bestSuccessLength || 0),
+      completedAt: String(record.completedAt || ''),
+    };
+  }
+
+  function normalizeNumberMemoryBestRecord(record) {
+    return {
+      objectId: String(record.objectId || ''),
+      userObjectId: String(record.userObjectId || ''),
+      username: String(record.username || ''),
+      bestSuccessLength: Number(record.bestSuccessLength || 0),
+      bestCompletedAt: String(record.bestCompletedAt || ''),
+    };
+  }
+
+  function summarizeNumberMemoryRecords(records) {
+    const safeRecords = Array.isArray(records)
+      ? records
+          .map(normalizeNumberMemoryRecord)
+          .filter((item) => item.objectId && item.bestSuccessLength > 0)
+      : [];
+
+    if (!safeRecords.length) {
+      return emptyNumberMemorySummary();
+    }
+
+    const best = safeRecords.slice().sort((left, right) => right.bestSuccessLength - left.bestSuccessLength || String(right.completedAt).localeCompare(String(left.completedAt)))[0] || null;
+    const recent = safeRecords
+      .slice()
+      .sort((left, right) => String(right.completedAt).localeCompare(String(left.completedAt)))
+      .slice(0, 5);
+
+    return { best, recent };
+  }
+
+  function summarizeNumberMemoryLeaderboardRows(rows) {
+    const safeRows = Array.isArray(rows)
+      ? rows
+          .map(normalizeNumberMemoryBestRecord)
+          .filter((item) => item.objectId && item.username && item.bestSuccessLength > 0)
+      : [];
+
+    const bestByUser = new Map();
+    safeRows.forEach((item) => {
+      const key = item.userObjectId || item.username;
+      const existing = bestByUser.get(key);
+      if (!existing || item.bestSuccessLength > existing.bestSuccessLength || (item.bestSuccessLength === existing.bestSuccessLength && String(item.bestCompletedAt) < String(existing.bestCompletedAt))) {
+        bestByUser.set(key, item);
+      }
+    });
+
+    return Array.from(bestByUser.values())
+      .sort((left, right) => right.bestSuccessLength - left.bestSuccessLength || String(left.bestCompletedAt).localeCompare(String(right.bestCompletedAt)))
+      .slice(0, 20);
+  }
+
+  function createNumberMemoryRecordPayload(user, startLength, bestSuccessLength, completedAt) {
+    return {
+      userObjectId: user.objectId,
+      username: user.username,
+      startLength,
+      bestSuccessLength,
+      completedAt,
+    };
+  }
+
+  function createNumberMemoryBestPayload(user, bestSuccessLength, completedAt) {
+    return {
+      userObjectId: user.objectId,
+      username: user.username,
+      bestSuccessLength,
+      bestCompletedAt: completedAt,
+    };
+  }
+
   function buildShareUrl(baseUrl, payload) {
     const url = new URL(baseUrl);
     url.searchParams.set('share', '1');
@@ -476,6 +630,88 @@
           session.sessionToken,
         );
       },
+      async fetchNumberMemoryRecords(session) {
+        const where = encodeURIComponent(JSON.stringify({ userObjectId: session.objectId }));
+        try {
+          const payload = await request(
+            `/classes/${NUMBER_MEMORY_RECORD_CLASS_NAME}?where=${where}&limit=1000`,
+            { method: 'GET' },
+            session.sessionToken,
+          );
+          return Array.isArray(payload.results) ? payload.results.map(normalizeNumberMemoryRecord) : [];
+        } catch (error) {
+          if (isMissingClassError(error, NUMBER_MEMORY_RECORD_CLASS_NAME)) {
+            return [];
+          }
+          throw error;
+        }
+      },
+      async fetchNumberMemoryBest(session) {
+        const where = encodeURIComponent(JSON.stringify({ userObjectId: session.objectId }));
+        try {
+          const payload = await request(
+            `/classes/${NUMBER_MEMORY_BEST_CLASS_NAME}?where=${where}&limit=1`,
+            { method: 'GET' },
+            session.sessionToken,
+          );
+          const rows = Array.isArray(payload.results) ? payload.results.map(normalizeNumberMemoryBestRecord) : [];
+          return rows[0] || null;
+        } catch (error) {
+          if (isMissingClassError(error, NUMBER_MEMORY_BEST_CLASS_NAME)) {
+            return null;
+          }
+          throw error;
+        }
+      },
+      async fetchNumberMemoryLeaderboard() {
+        try {
+          const payload = await request(
+            `/classes/${NUMBER_MEMORY_BEST_CLASS_NAME}?order=-bestSuccessLength&limit=20`,
+            { method: 'GET' },
+          );
+          return Array.isArray(payload.results) ? payload.results.map(normalizeNumberMemoryBestRecord) : [];
+        } catch (error) {
+          if (isMissingClassError(error, NUMBER_MEMORY_BEST_CLASS_NAME)) {
+            return [];
+          }
+          throw error;
+        }
+      },
+      async createNumberMemoryRecord(session, payload) {
+        return request(
+          `/classes/${NUMBER_MEMORY_RECORD_CLASS_NAME}`,
+          { method: 'POST', body: JSON.stringify(payload) },
+          session.sessionToken,
+        );
+      },
+      async createNumberMemoryBest(session, payload) {
+        return request(
+          `/classes/${NUMBER_MEMORY_BEST_CLASS_NAME}`,
+          { method: 'POST', body: JSON.stringify(payload) },
+          session.sessionToken,
+        );
+      },
+      async updateNumberMemoryBest(session, objectId, payload) {
+        return request(
+          `/classes/${NUMBER_MEMORY_BEST_CLASS_NAME}/${objectId}`,
+          { method: 'PUT', body: JSON.stringify(payload) },
+          session.sessionToken,
+        );
+      },
+      async deleteNumberMemoryRecord(session, objectId) {
+        return request(
+          `/classes/${NUMBER_MEMORY_RECORD_CLASS_NAME}/${objectId}`,
+          { method: 'DELETE' },
+          session.sessionToken,
+        );
+      },
+      async deleteNumberMemoryBest(session, objectId) {
+        return request(
+          `/classes/${NUMBER_MEMORY_BEST_CLASS_NAME}/${objectId}`,
+          { method: 'DELETE' },
+          session.sessionToken,
+        );
+      },
     };
   }
 
@@ -517,11 +753,13 @@
   }
 
   function updateStatus() {
-    if (!targetElement || !timerElement || !messageElement) {
+    if (!timerElement || !messageElement) {
       return;
     }
 
-    targetElement.textContent = currentState.completed ? '完成' : String(currentState.nextTarget);
+    if (targetElement) {
+      targetElement.textContent = currentState.completed ? '完成' : String(currentState.nextTarget);
+    }
 
     if (!currentState.running && !currentState.completed) {
       timerElement.textContent = '00.00s';
@@ -530,7 +768,7 @@
     }
 
     if (currentState.running) {
-      messageElement.textContent = `请按顺序点击数字 ${currentState.nextTarget}。`;
+      messageElement.textContent = '请按顺序点击数字。';
       return;
     }
 
@@ -668,6 +906,140 @@
     sharePreviewText.textContent = `${currentSharePayload.username} 的最佳成绩是 ${currentSharePayload.bestTime}，完成于 ${currentSharePayload.completedAt}，训练模式为 ${modeLabel}。`;
   }
 
+  function syncModeVisibility() {
+    if (schulteModePanel) {
+      schulteModePanel.classList.toggle('hidden', activeMode !== 'schulte');
+    }
+    if (numberMemoryModePanel) {
+      numberMemoryModePanel.classList.toggle('hidden', activeMode !== 'memory');
+    }
+    if (schulteModeButton) {
+      schulteModeButton.classList.toggle('active', activeMode === 'schulte');
+    }
+    if (numberMemoryModeButton) {
+      numberMemoryModeButton.classList.toggle('active', activeMode === 'memory');
+    }
+  }
+
+  function renderNumberMemoryRecords() {
+    if (!memoryBestValue || !memoryRecordsList || !memoryRecordsEmpty) {
+      return;
+    }
+
+    memoryBestValue.textContent = memorySummary.best ? `${memorySummary.best.bestSuccessLength} 位` : '暂无';
+    memoryRecordsList.innerHTML = '';
+
+    if (!currentSession) {
+      memoryRecordsEmpty.classList.remove('hidden');
+      memoryRecordsEmpty.textContent = '请先登录后查看数字记忆成绩。';
+      return;
+    }
+
+    if (!memorySummary.recent.length) {
+      memoryRecordsEmpty.classList.remove('hidden');
+      memoryRecordsEmpty.textContent = '还没有数字记忆成绩，开始挑战吧。';
+      return;
+    }
+
+    memoryRecordsEmpty.classList.add('hidden');
+    memorySummary.recent.forEach((item) => {
+      const row = document.createElement('li');
+      const score = document.createElement('span');
+      const date = document.createElement('span');
+      score.className = 'record-time';
+      date.className = 'record-date';
+      score.textContent = `${item.bestSuccessLength} 位`;
+      date.textContent = item.completedAt;
+      row.appendChild(score);
+      row.appendChild(date);
+      memoryRecordsList.appendChild(row);
+    });
+  }
+
+  function renderNumberMemoryLeaderboard() {
+    if (!memoryLeaderboardEmpty || !memoryLeaderboardList) {
+      return;
+    }
+
+    memoryLeaderboardList.innerHTML = '';
+
+    if (!memoryLeaderboard.length) {
+      memoryLeaderboardEmpty.classList.remove('hidden');
+      memoryLeaderboardEmpty.textContent = memoryLeaderboardMessage;
+      return;
+    }
+
+    memoryLeaderboardEmpty.classList.add('hidden');
+    memoryLeaderboard.forEach((item, index) => {
+      const row = document.createElement('li');
+      const rank = document.createElement('span');
+      const main = document.createElement('div');
+      const user = document.createElement('span');
+      const meta = document.createElement('span');
+      const score = document.createElement('span');
+
+      row.className = 'leaderboard-row';
+      if (currentSession && item.userObjectId === currentSession.objectId) {
+        row.classList.add('current-user');
+      }
+
+      rank.className = 'leaderboard-rank';
+      rank.textContent = String(index + 1);
+      main.className = 'leaderboard-main';
+      user.className = 'leaderboard-user';
+      user.textContent = item.username;
+      meta.className = 'leaderboard-meta';
+      meta.textContent = item.bestCompletedAt;
+      score.className = 'leaderboard-score';
+      score.textContent = `${item.bestSuccessLength} 位`;
+
+      main.appendChild(user);
+      main.appendChild(meta);
+      row.appendChild(rank);
+      row.appendChild(main);
+      row.appendChild(score);
+      memoryLeaderboardList.appendChild(row);
+    });
+  }
+
+  function updateNumberMemoryUI(message) {
+    if (memoryCurrentLengthValue) {
+      memoryCurrentLengthValue.textContent = String(numberMemoryState.currentLength);
+    }
+    if (memoryRunBestValue) {
+      memoryRunBestValue.textContent = String(numberMemoryState.longestSuccessLength);
+    }
+    if (memoryMessage) {
+      memoryMessage.textContent = message || (currentSession ? '设置起始长度后开始数字记忆训练。' : '请先登录后再开始数字记忆训练。');
+    }
+    if (memorySequenceDisplay) {
+      if (numberMemoryState.status === 'showing') {
+        memorySequenceDisplay.textContent = numberMemoryState.currentSequence;
+      } else if (numberMemoryState.status === 'answering') {
+        memorySequenceDisplay.textContent = '请输入答案';
+      } else if (numberMemoryState.status === 'finished') {
+        memorySequenceDisplay.textContent = '本轮结束';
+      } else {
+        memorySequenceDisplay.textContent = '准备开始';
+      }
+      memorySequenceDisplay.classList.toggle('hidden-sequence', numberMemoryState.status !== 'showing');
+    }
+    if (memoryAnswerInput) {
+      memoryAnswerInput.disabled = !numberMemoryState.awaitingInput;
+    }
+    if (memorySubmitButton) {
+      memorySubmitButton.disabled = !numberMemoryState.awaitingInput;
+    }
+    if (memoryStartButton) {
+      memoryStartButton.disabled = !currentSession;
+    }
+    if (clearMemoryRecordsButton) {
+      clearMemoryRecordsButton.disabled = !currentSession;
+    }
+    renderNumberMemoryRecords();
+    renderNumberMemoryLeaderboard();
+  }
+
   function getBestSharePayload() {
     if (!currentSession || !currentSummary.best) {
       return null;
@@ -742,6 +1114,8 @@
     renderLeaderboard();
     renderSharePreview();
     updateShareUI();
+    updateNumberMemoryUI();
+    syncModeVisibility();
     updateStatus();
   }
 
@@ -786,6 +1160,213 @@
       leaderboardMessage = extractErrorMessage(error, '排行榜加载失败');
       renderLeaderboard();
     }
+  }
+
+  function applyNumberMemoryDefaultStartLength() {
+    const nextDefault = getDefaultNumberMemoryStartLength(memorySummary.best ? memorySummary.best.bestSuccessLength : null);
+    numberMemoryState.startLength = nextDefault;
+    if (memoryStartLengthInput) {
+      memoryStartLengthInput.value = String(nextDefault);
+    }
+    if (numberMemoryState.status === 'idle') {
+      numberMemoryState.currentLength = nextDefault;
+    }
+  }
+
+  async function refreshNumberMemorySummary() {
+    if (!currentSession || !bmobApi) {
+      memorySummary = emptyNumberMemorySummary();
+      applyNumberMemoryDefaultStartLength();
+      renderNumberMemoryRecords();
+      return;
+    }
+
+    try {
+      const records = await bmobApi.fetchNumberMemoryRecords(currentSession);
+      memorySummary = summarizeNumberMemoryRecords(records);
+      applyNumberMemoryDefaultStartLength();
+      renderNumberMemoryRecords();
+    } catch (error) {
+      memorySummary = emptyNumberMemorySummary();
+      applyNumberMemoryDefaultStartLength();
+      renderNumberMemoryRecords();
+      if (memoryRecordsEmpty) {
+        memoryRecordsEmpty.classList.remove('hidden');
+        memoryRecordsEmpty.textContent = extractErrorMessage(error, '数字记忆成绩加载失败');
+      }
+    }
+  }
+
+  async function refreshNumberMemoryLeaderboard() {
+    if (!bmobApi) {
+      memoryLeaderboard = [];
+      memoryLeaderboardMessage = '当前环境不支持数字记忆排行榜请求。';
+      renderNumberMemoryLeaderboard();
+      return;
+    }
+
+    try {
+      memoryLeaderboard = summarizeNumberMemoryLeaderboardRows(await bmobApi.fetchNumberMemoryLeaderboard());
+      memoryLeaderboardMessage = '还没有数字记忆排行榜数据。';
+      renderNumberMemoryLeaderboard();
+    } catch (error) {
+      memoryLeaderboard = [];
+      memoryLeaderboardMessage = extractErrorMessage(error, '数字记忆排行榜加载失败');
+      renderNumberMemoryLeaderboard();
+    }
+  }
+
+  async function upsertNumberMemoryBest(bestSuccessLength, completedAt) {
+    if (!currentSession || !bmobApi || bestSuccessLength <= 0) {
+      return;
+    }
+
+    const payload = createNumberMemoryBestPayload(currentSession, bestSuccessLength, completedAt);
+    const existing = await bmobApi.fetchNumberMemoryBest(currentSession);
+
+    if (!existing) {
+      await bmobApi.createNumberMemoryBest(currentSession, payload);
+      return;
+    }
+
+    if (bestSuccessLength > existing.bestSuccessLength) {
+      await bmobApi.updateNumberMemoryBest(currentSession, existing.objectId, payload);
+    }
+  }
+
+  async function clearNumberMemoryRecords() {
+    if (!currentSession || !bmobApi) {
+      return;
+    }
+
+    const records = await bmobApi.fetchNumberMemoryRecords(currentSession);
+    await Promise.all(records.map((item) => bmobApi.deleteNumberMemoryRecord(currentSession, item.objectId)));
+    const best = await bmobApi.fetchNumberMemoryBest(currentSession);
+    if (best) {
+      await bmobApi.deleteNumberMemoryBest(currentSession, best.objectId);
+    }
+  }
+
+  function clearMemoryHideTimer() {
+    if (memoryHideTimer) {
+      window.clearTimeout(memoryHideTimer);
+      memoryHideTimer = null;
+    }
+  }
+
+  function revealNextMemorySequence() {
+    numberMemoryState.status = 'showing';
+    numberMemoryState.currentSequence = createNumberMemorySequence(numberMemoryState.currentLength);
+    numberMemoryState.awaitingInput = false;
+    updateNumberMemoryUI(`记住这串 ${numberMemoryState.currentLength} 位数字。`);
+
+    clearMemoryHideTimer();
+    memoryHideTimer = window.setTimeout(() => {
+      numberMemoryState.status = 'answering';
+      numberMemoryState.awaitingInput = true;
+      if (memoryAnswerInput) {
+        memoryAnswerInput.value = '';
+        memoryAnswerInput.focus();
+      }
+      updateNumberMemoryUI(`请输入刚才看到的 ${numberMemoryState.currentLength} 位数字。`);
+    }, Math.min(3200, 900 + numberMemoryState.currentLength * 250));
+  }
+
+  function switchMode(nextMode) {
+    if (activeMode === 'memory' && nextMode !== 'memory') {
+      clearMemoryHideTimer();
+      numberMemoryState.awaitingInput = false;
+      numberMemoryState.currentSequence = '';
+      numberMemoryState.status = 'idle';
+      applyNumberMemoryDefaultStartLength();
+    }
+    activeMode = nextMode;
+    syncModeVisibility();
+    if (activeMode === 'memory') {
+      updateNumberMemoryUI();
+    } else {
+      updateAuthUI();
+    }
+  }
+
+  function startNumberMemoryGame() {
+    if (!currentSession) {
+      updateNumberMemoryUI('请先登录后再开始数字记忆训练。');
+      return;
+    }
+
+    const validation = validateNumberMemoryStartLength(memoryStartLengthInput ? memoryStartLengthInput.value : 3);
+    if (!validation.ok) {
+      updateNumberMemoryUI(validation.message);
+      return;
+    }
+    const startLength = validation.value;
+    if (memoryStartLengthInput) {
+      memoryStartLengthInput.value = String(startLength);
+    }
+
+    clearMemoryHideTimer();
+    numberMemoryState = createNumberMemoryState(startLength);
+    revealNextMemorySequence();
+  }
+
+  async function finishNumberMemoryGame(messagePrefix) {
+    clearMemoryHideTimer();
+    numberMemoryState.status = 'finished';
+    numberMemoryState.awaitingInput = false;
+    const finalBest = numberMemoryState.longestSuccessLength;
+    numberMemoryState.currentSequence = '';
+    if (memoryAnswerInput) {
+      memoryAnswerInput.value = '';
+    }
+
+    if (finalBest <= 0) {
+      updateNumberMemoryUI(`${messagePrefix}本局还没有成功记住任何一轮。`);
+      return;
+    }
+
+    const completedAt = formatCompletedAt(new Date());
+    updateNumberMemoryUI(`${messagePrefix}本局最长成功长度为 ${finalBest} 位。`);
+
+    if (!currentSession || !bmobApi) {
+      return;
+    }
+
+    try {
+      await bmobApi.createNumberMemoryRecord(
+        currentSession,
+        createNumberMemoryRecordPayload(currentSession, numberMemoryState.startLength, finalBest, completedAt),
+      );
+      await upsertNumberMemoryBest(finalBest, completedAt);
+      await refreshNumberMemorySummary();
+      await refreshNumberMemoryLeaderboard();
+    } catch (error) {
+      updateNumberMemoryUI(`${messagePrefix}本局最长成功长度为 ${finalBest} 位，但云端保存失败：${extractErrorMessage(error, '请稍后重试')}`);
+    }
+  }
+
+  async function submitNumberMemoryAnswer() {
+    if (!numberMemoryState.awaitingInput) {
+      return;
+    }
+
+    const answer = String(memoryAnswerInput ? memoryAnswerInput.value : '').trim();
+    if (!answer) {
+      updateNumberMemoryUI('请输入刚才看到的数字。');
+      return;
+    }
+
+    if (answer === numberMemoryState.currentSequence) {
+      numberMemoryState.longestSuccessLength = numberMemoryState.currentLength;
+      numberMemoryState.currentLength += 1;
+      numberMemoryState.currentSequence = '';
+      numberMemoryState.awaitingInput = false;
+      updateNumberMemoryUI(`回答正确，下一轮将挑战 ${numberMemoryState.currentLength} 位数字。`);
+      revealNextMemorySequence();
+      return;
+    }
+
+    await finishNumberMemoryGame(`输入错误。正确答案是 ${numberMemoryState.currentSequence}。`);
   }
 
   async function upsertBestScore(elapsedMs, completedAt, colorEnabled) {
@@ -922,7 +1503,7 @@
 
     if (result.status === 'wrong') {
       if (messageElement) {
-        messageElement.textContent = `再找找看，当前应该点击 ${currentState.nextTarget}。`;
+        messageElement.textContent = '再找找看，按顺序继续点击。';
       }
       return;
     }
@@ -971,6 +1552,8 @@
     updateAuthUI('注册并登录成功');
     await refreshScoreSummary();
     await refreshLeaderboard();
+    await refreshNumberMemorySummary();
+    await refreshNumberMemoryLeaderboard();
   }
 
   async function handleLoginSubmit(event) {
@@ -1001,14 +1584,20 @@
     updateAuthUI('登录成功');
     await refreshScoreSummary();
     await refreshLeaderboard();
+    await refreshNumberMemorySummary();
+    await refreshNumberMemoryLeaderboard();
   }
 
   function handleLogoutClick() {
+    clearMemoryHideTimer();
+    numberMemoryState = createNumberMemoryState(getDefaultNumberMemoryStartLength(memorySummary.best ? memorySummary.best.bestSuccessLength : null));
     currentSession = null;
     currentSummary = emptySummary();
+    memorySummary = emptyNumberMemorySummary();
     clearSession();
     updateAuthUI('已退出登录');
     void refreshLeaderboard();
+    void refreshNumberMemoryLeaderboard();
   }
 
   async function handleClearRecordsClick() {
@@ -1024,6 +1613,23 @@
       updateAuthUI('已清空当前用户的云端成绩');
     } catch (error) {
       updateAuthUI(extractErrorMessage(error, '清空成绩失败'));
+    }
+  }
+
+  async function handleClearMemoryRecordsClick() {
+    if (!currentSession || !bmobApi) {
+      return;
+    }
+
+    try {
+      await clearNumberMemoryRecords();
+      memorySummary = emptyNumberMemorySummary();
+      applyNumberMemoryDefaultStartLength();
+      renderNumberMemoryRecords();
+      await refreshNumberMemoryLeaderboard();
+      updateNumberMemoryUI('已清空当前用户的数字记忆成绩');
+    } catch (error) {
+      updateNumberMemoryUI(extractErrorMessage(error, '清空数字记忆成绩失败'));
     }
   }
 
@@ -1063,6 +1669,7 @@
     }
 
     syncColorMode(Boolean(colorToggle && colorToggle.checked));
+    applyNumberMemoryDefaultStartLength();
     updateAuthUI();
     renderGrid();
 
@@ -1115,9 +1722,45 @@
       });
     }
 
+    if (schulteModeButton) {
+      schulteModeButton.addEventListener('click', () => switchMode('schulte'));
+    }
+
+    if (numberMemoryModeButton) {
+      numberMemoryModeButton.addEventListener('click', () => switchMode('memory'));
+    }
+
+    if (memoryStartButton) {
+      memoryStartButton.addEventListener('click', startNumberMemoryGame);
+    }
+
+    if (memorySubmitButton) {
+      memorySubmitButton.addEventListener('click', () => {
+        void submitNumberMemoryAnswer();
+      });
+    }
+
+    if (memoryAnswerInput) {
+      memoryAnswerInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          void submitNumberMemoryAnswer();
+        }
+      });
+    }
+
+    if (clearMemoryRecordsButton) {
+      clearMemoryRecordsButton.addEventListener('click', () => {
+        void handleClearMemoryRecordsClick();
+      });
+    }
+
     void refreshScoreSummary();
     void refreshLeaderboard();
+    void refreshNumberMemorySummary();
+    void refreshNumberMemoryLeaderboard();
     renderSharePreview();
+    updateNumberMemoryUI();
   }
 
   if (typeof document !== 'undefined') {
@@ -1145,6 +1788,11 @@
       buildShareUrl,
       buildShareText,
       parseShareParams,
+      sanitizeNumberMemoryStartLength,
+      validateNumberMemoryStartLength,
+      getDefaultNumberMemoryStartLength,
+      createNumberMemorySequence,
+      summarizeNumberMemoryLeaderboardRows,
     };
   }
 }());

@@ -40,71 +40,132 @@
     </section>
 
     <section class="game-panel">
-      <div class="control-bar">
-        <button id="startButton" class="action-button primary" type="button">开始训练</button>
-        <button id="resetButton" class="action-button secondary" type="button">重新生成</button>
-        <label class="mode-toggle" for="colorToggle">
-          <input id="colorToggle" type="checkbox" checked>
-          <span>彩色模式</span>
-        </label>
+      <div class="mode-switch" role="tablist" aria-label="训练模式切换">
+        <button id="schulteModeButton" class="mode-switch-button active" type="button">舒尔特表</button>
+        <button id="numberMemoryModeButton" class="mode-switch-button" type="button">数字记忆</button>
       </div>
 
-      <div class="status-board">
-        <article class="status-card">
-          <span class="status-label">当前目标</span>
-          <strong id="targetValue">1</strong>
-        </article>
-        <article class="status-card">
-          <span class="status-label">当前用时</span>
-          <strong id="timerValue">00.00s</strong>
-        </article>
-      </div>
-
-      <p id="message" class="message" aria-live="polite">点击“开始训练”开始一局新的舒尔特表挑战。</p>
-
-      <section id="grid" class="schulte-grid idle" aria-label="舒尔特表训练网格"></section>
-
-      <section id="resultPanel" class="result-panel hidden" aria-live="polite">
-        <h2>完成挑战</h2>
-        <p id="resultText">你已经完成本轮训练。</p>
-      </section>
-
-      <section id="sharePreviewCard" class="share-preview-card hidden" aria-live="polite">
-        <p class="eyebrow share-kicker">Best Score Share</p>
-        <h2>分享成绩</h2>
-        <p id="sharePreviewText" class="share-preview-text"></p>
-      </section>
-
-      <section class="record-panel" aria-live="polite">
-        <div class="record-panel-head">
-          <h2>训练记录</h2>
-          <button id="clearRecordsButton" class="record-clear-button" type="button">清空记录</button>
+      <section id="schulteModePanel" class="mode-panel">
+        <div class="control-bar">
+          <button id="startButton" class="action-button primary" type="button">开始训练</button>
+          <button id="resetButton" class="action-button secondary" type="button">重新生成</button>
+          <label class="mode-toggle" for="colorToggle">
+            <input id="colorToggle" type="checkbox" checked>
+            <span>彩色模式</span>
+          </label>
         </div>
 
-        <article class="best-record-card">
-          <span class="record-label">最佳成绩</span>
-          <strong id="bestRecordValue">暂无</strong>
-          <div class="share-actions">
-            <button id="copyShareTextButton" class="share-action-button" type="button">复制分享文本</button>
-            <button id="copyShareLinkButton" class="share-action-button" type="button">复制分享链接</button>
+        <div class="status-board">
+          <article class="status-card">
+            <span class="status-label">当前用时</span>
+            <strong id="timerValue">00.00s</strong>
+          </article>
+        </div>
+
+        <p id="message" class="message" aria-live="polite">点击“开始训练”开始一局新的舒尔特表挑战。</p>
+
+        <section id="grid" class="schulte-grid idle" aria-label="舒尔特表训练网格"></section>
+
+        <section id="resultPanel" class="result-panel hidden" aria-live="polite">
+          <h2>完成挑战</h2>
+          <p id="resultText">你已经完成本轮训练。</p>
+        </section>
+
+        <section id="sharePreviewCard" class="share-preview-card hidden" aria-live="polite">
+          <p class="eyebrow share-kicker">Best Score Share</p>
+          <h2>分享成绩</h2>
+          <p id="sharePreviewText" class="share-preview-text"></p>
+        </section>
+
+        <section class="record-panel" aria-live="polite">
+          <div class="record-panel-head">
+            <h2>训练记录</h2>
+            <button id="clearRecordsButton" class="record-clear-button" type="button">清空记录</button>
           </div>
-          <p id="shareMessage" class="share-message">先完成一局训练，再分享你的最佳成绩。</p>
-        </article>
 
-        <div class="recent-records">
-          <p class="record-label">最近 5 次</p>
-          <p id="recordsEmpty" class="records-empty">还没有历史成绩，开始训练吧。</p>
-          <ul id="recordsList" class="records-list"></ul>
-        </div>
+          <article class="best-record-card">
+            <span class="record-label">最佳成绩</span>
+            <strong id="bestRecordValue">暂无</strong>
+            <div class="share-actions">
+              <button id="copyShareTextButton" class="share-action-button" type="button">复制分享文本</button>
+              <button id="copyShareLinkButton" class="share-action-button" type="button">复制分享链接</button>
+            </div>
+            <p id="shareMessage" class="share-message">先完成一局训练，再分享你的最佳成绩。</p>
+          </article>
+
+          <div class="recent-records">
+            <p class="record-label">最近 5 次</p>
+            <p id="recordsEmpty" class="records-empty">还没有历史成绩，开始训练吧。</p>
+            <ul id="recordsList" class="records-list"></ul>
+          </div>
+        </section>
+
+        <section class="leaderboard-panel" aria-live="polite">
+          <div class="record-panel-head">
+            <h2>全站前20</h2>
+          </div>
+
+          <p id="leaderboardEmpty" class="records-empty">还没有排行榜数据。</p>
+          <ol id="leaderboardList" class="leaderboard-list"></ol>
+        </section>
       </section>
 
-      <section class="leaderboard-panel" aria-live="polite">
-        <div class="record-panel-head">
-          <h2>全站前20</h2>
-        </div>
+      <section id="numberMemoryModePanel" class="mode-panel hidden">
+        <section class="memory-panel">
+          <div class="memory-control-row">
+            <label class="memory-length-field" for="memoryStartLengthInput">
+              <span class="record-label">起始长度</span>
+              <input id="memoryStartLengthInput" class="auth-input" type="number" min="2" max="20" value="3">
+            </label>
+            <button id="memoryStartButton" class="action-button primary" type="button">开始记忆</button>
+          </div>
 
-        <p id="leaderboardEmpty" class="records-empty">还没有排行榜数据。</p>
-        <ol id="leaderboardList" class="leaderboard-list"></ol>
+          <div class="status-board memory-status-board">
+            <article class="status-card">
+              <span class="status-label">当前长度</span>
+              <strong id="memoryCurrentLengthValue">3</strong>
+            </article>
+            <article class="status-card">
+              <span class="status-label">当前最高</span>
+              <strong id="memoryRunBestValue">0</strong>
+            </article>
+          </div>
+
+          <p id="memoryMessage" class="message" aria-live="polite">设置起始长度后开始数字记忆训练。</p>
+          <section id="memorySequenceDisplay" class="memory-sequence-display" aria-live="polite">准备开始</section>
+
+          <div class="memory-answer-row">
+            <input id="memoryAnswerInput" class="auth-input" type="text" inputmode="numeric" autocomplete="off" placeholder="输入刚才看到的数字" disabled>
+            <button id="memorySubmitButton" class="action-button secondary" type="button" disabled>提交答案</button>
+          </div>
+        </section>
+
+        <section class="record-panel" aria-live="polite">
+          <div class="record-panel-head">
+            <h2>数字记忆记录</h2>
+            <button id="clearMemoryRecordsButton" class="record-clear-button" type="button">清空记录</button>
+          </div>
+
+          <article class="best-record-card">
+            <span class="record-label">最长成功长度</span>
+            <strong id="memoryBestValue">暂无</strong>
+          </article>
+
+          <div class="recent-records">
+            <p class="record-label">最近 5 次</p>
+            <p id="memoryRecordsEmpty" class="records-empty">还没有数字记忆成绩，开始挑战吧。</p>
+            <ul id="memoryRecordsList" class="records-list"></ul>
+          </div>
+        </section>
+
+        <section class="leaderboard-panel" aria-live="polite">
+          <div class="record-panel-head">
+            <h2>数字记忆前20</h2>
+          </div>
+
+          <p id="memoryLeaderboardEmpty" class="records-empty">还没有数字记忆排行榜数据。</p>
+          <ol id="memoryLeaderboardList" class="leaderboard-list"></ol>
+        </section>
       </section>
     </section>
   </main>

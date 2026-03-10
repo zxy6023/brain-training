@@ -22,6 +22,11 @@ const {
   buildShareUrl,
   buildShareText,
   parseShareParams,
+  sanitizeNumberMemoryStartLength,
+  validateNumberMemoryStartLength,
+  getDefaultNumberMemoryStartLength,
+  createNumberMemorySequence,
+  summarizeNumberMemoryLeaderboardRows,
 } = require('./script.js');
 
 const styleCss = fs.readFileSync(path.join(__dirname, 'style.css'), 'utf8');
@@ -333,4 +338,64 @@ test('refreshScoreSummary also refreshes share button state', () => {
   const end = scriptSource.indexOf('async function refreshLeaderboard()', start);
   const section = scriptSource.slice(start, end);
   assert.ok(section.includes('updateShareUI('));
+});
+
+test('sanitizeNumberMemoryStartLength clamps to supported bounds', () => {
+  assert.equal(sanitizeNumberMemoryStartLength('1'), 2);
+  assert.equal(sanitizeNumberMemoryStartLength('8'), 8);
+  assert.equal(sanitizeNumberMemoryStartLength('99'), 20);
+});
+
+test('validateNumberMemoryStartLength rejects out-of-range values', () => {
+  assert.equal(validateNumberMemoryStartLength('1').ok, false);
+  assert.equal(validateNumberMemoryStartLength('21').ok, false);
+  assert.equal(validateNumberMemoryStartLength('8').value, 8);
+});
+
+test('getDefaultNumberMemoryStartLength uses previous best plus one', () => {
+  assert.equal(getDefaultNumberMemoryStartLength(null), 3);
+  assert.equal(getDefaultNumberMemoryStartLength(6), 7);
+  assert.equal(getDefaultNumberMemoryStartLength(20), 20);
+});
+
+test('createNumberMemorySequence builds a string of the requested length', () => {
+  const picks = [0.1, 0.2, 0.3, 0.4];
+  let index = 0;
+
+  const value = createNumberMemorySequence(4, () => {
+    const next = picks[index];
+    index += 1;
+    return next;
+  });
+
+  assert.equal(value, '1234');
+});
+
+test('summarizeNumberMemoryLeaderboardRows sorts by longest success descending', () => {
+  const rows = [
+    { objectId: '1', userObjectId: 'u1', username: 'alice', bestSuccessLength: 9, bestCompletedAt: '2026-03-10 10:00:00' },
+    { objectId: '1b', userObjectId: 'u1', username: 'alice', bestSuccessLength: 8, bestCompletedAt: '2026-03-10 11:00:00' },
+    { objectId: '2', userObjectId: 'u2', username: 'bob', bestSuccessLength: 12, bestCompletedAt: '2026-03-10 09:00:00' },
+    { objectId: '3', userObjectId: 'u3', username: 'coco', bestSuccessLength: 10, bestCompletedAt: '2026-03-10 08:00:00' },
+  ];
+
+  const result = summarizeNumberMemoryLeaderboardRows(rows);
+
+  assert.equal(result.length, 3);
+  assert.equal(result[0].username, 'bob');
+  assert.equal(result[1].username, 'coco');
+  assert.equal(result[2].username, 'alice');
+});
+
+test('number memory implementation cancels active run on mode switch or logout', () => {
+  assert.match(scriptSource, /function switchMode\(nextMode\)[\s\S]*clearMemoryHideTimer\(/);
+  assert.match(scriptSource, /function handleLogoutClick\(\)[\s\S]*clearMemoryHideTimer\(/);
+});
+
+test('finishNumberMemoryGame handles persistence failures', () => {
+  const start = scriptSource.indexOf('async function finishNumberMemoryGame(');
+  const end = scriptSource.indexOf('async function submitNumberMemoryAnswer()', start);
+  const section = scriptSource.slice(start, end);
+  assert.ok(section.includes('try {'));
+  assert.ok(section.includes('catch (error)'));
 });
