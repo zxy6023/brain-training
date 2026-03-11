@@ -1247,6 +1247,31 @@
     }
   }
 
+  async function persistNumberMemorySuccess(bestSuccessLength, messagePrefix) {
+    if (bestSuccessLength <= 0) {
+      return;
+    }
+
+    const completedAt = formatCompletedAt(new Date());
+    updateNumberMemoryUI(`${messagePrefix}已刷新到 ${bestSuccessLength} 位，记录已更新。`);
+
+    if (!currentSession || !bmobApi) {
+      return;
+    }
+
+    try {
+      await bmobApi.createNumberMemoryRecord(
+        currentSession,
+        createNumberMemoryRecordPayload(currentSession, numberMemoryState.startLength, bestSuccessLength, completedAt),
+      );
+      await upsertNumberMemoryBest(bestSuccessLength, completedAt);
+      await refreshNumberMemorySummary();
+      await refreshNumberMemoryLeaderboard();
+    } catch (error) {
+      updateNumberMemoryUI(`${messagePrefix}已达到 ${bestSuccessLength} 位，但云端保存失败：${extractErrorMessage(error, '请稍后重试')}`);
+    }
+  }
+
   function clearMemoryHideTimer() {
     if (memoryHideTimer) {
       window.clearTimeout(memoryHideTimer);
@@ -1324,25 +1349,7 @@
       updateNumberMemoryUI(`${messagePrefix}本局还没有成功记住任何一轮。`);
       return;
     }
-
-    const completedAt = formatCompletedAt(new Date());
     updateNumberMemoryUI(`${messagePrefix}本局最长成功长度为 ${finalBest} 位。`);
-
-    if (!currentSession || !bmobApi) {
-      return;
-    }
-
-    try {
-      await bmobApi.createNumberMemoryRecord(
-        currentSession,
-        createNumberMemoryRecordPayload(currentSession, numberMemoryState.startLength, finalBest, completedAt),
-      );
-      await upsertNumberMemoryBest(finalBest, completedAt);
-      await refreshNumberMemorySummary();
-      await refreshNumberMemoryLeaderboard();
-    } catch (error) {
-      updateNumberMemoryUI(`${messagePrefix}本局最长成功长度为 ${finalBest} 位，但云端保存失败：${extractErrorMessage(error, '请稍后重试')}`);
-    }
   }
 
   async function submitNumberMemoryAnswer() {
@@ -1361,7 +1368,7 @@
       numberMemoryState.currentLength += 1;
       numberMemoryState.currentSequence = '';
       numberMemoryState.awaitingInput = false;
-      updateNumberMemoryUI(`回答正确，下一轮将挑战 ${numberMemoryState.currentLength} 位数字。`);
+      await persistNumberMemorySuccess(numberMemoryState.longestSuccessLength, `回答正确，下一轮将挑战 ${numberMemoryState.currentLength} 位数字。`);
       revealNextMemorySequence();
       return;
     }

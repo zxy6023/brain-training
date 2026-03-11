@@ -393,9 +393,23 @@ test('number memory implementation cancels active run on mode switch or logout',
 });
 
 test('finishNumberMemoryGame handles persistence failures', () => {
-  const start = scriptSource.indexOf('async function finishNumberMemoryGame(');
-  const end = scriptSource.indexOf('async function submitNumberMemoryAnswer()', start);
+  const start = scriptSource.indexOf('async function persistNumberMemorySuccess(');
+  const end = scriptSource.indexOf('async function finishNumberMemoryGame(', start);
   const section = scriptSource.slice(start, end);
   assert.ok(section.includes('try {'));
   assert.ok(section.includes('catch (error)'));
+});
+
+test('submitNumberMemoryAnswer persists immediately on success', () => {
+  const start = scriptSource.indexOf('async function submitNumberMemoryAnswer()');
+  const end = scriptSource.indexOf('async function upsertBestScore(', start);
+  const section = scriptSource.slice(start, end);
+  assert.ok(section.includes('await persistNumberMemorySuccess('));
+});
+
+test('finishNumberMemoryGame no longer writes a duplicate record on failure', () => {
+  const start = scriptSource.indexOf('async function finishNumberMemoryGame(');
+  const end = scriptSource.indexOf('async function submitNumberMemoryAnswer()', start);
+  const section = scriptSource.slice(start, end);
+  assert.ok(!section.includes('createNumberMemoryRecordPayload('));
 });
